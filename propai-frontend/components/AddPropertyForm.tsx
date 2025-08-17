@@ -67,12 +67,13 @@ export default function AddPropertyForm({
       </label>
 
       <label className="text-sm block">
-        <div className="mb-1 font-medium">Phone</div>
+        <div className="mb-1 font-medium">Phone *</div>
         <input
           className="w-full border rounded-xl p-2"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+1 404 555 0123"
+          required
         />
       </label>
 

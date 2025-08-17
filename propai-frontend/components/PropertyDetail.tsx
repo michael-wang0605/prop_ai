@@ -7,9 +7,16 @@ import TextHistory from "@/components/TextHistory";
 import AIChat from "@/components/AIChat";
 import RecentRequests from "@/components/RecentRequests";
 import ImportantInfo from "@/components/ImportantInfo";
+import { Trash2 } from "lucide-react";
 import type { Property } from "@/lib/types";
 
-export default function PropertyDetail({ property }: { property: Property }) {
+export default function PropertyDetail({
+  property,
+  onRequestDelete,
+}: {
+  property: Property;
+  onRequestDelete?: (p: Property) => void;
+}) {
   const [tab, setTab] = useState("text");
 
   return (
@@ -25,14 +32,33 @@ export default function PropertyDetail({ property }: { property: Property }) {
           <div className="p-4">
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-xl font-semibold">{property.name ?? "—"}</div>
+                <div className="text-xl font-semibold">
+                  {property.name ?? "—"}
+                </div>
                 <div className="text-sm text-gray-500 mt-1">
                   {property.context?.address ?? "—"}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button className="px-3 py-1.5 rounded-xl border cursor-pointer">Edit</button>
-                <button className="px-3 py-1.5 rounded-xl border cursor-pointer">Share</button>
+
+              {/* Actions */}
+              <div className="flex gap-2 items-center">
+                {/* Delete (left of Edit) */}
+                <button
+                  type="button"
+                  onClick={() => onRequestDelete?.(property)}
+                  className="p-2 rounded-xl border bg-white hover:bg-red-50 group"
+                  aria-label="Delete property"
+                  title="Delete property"
+                >
+                  <Trash2 className="h-4 w-4 text-gray-600 group-hover:text-red-600 transition" />
+                </button>
+
+                <button className="px-3 py-1.5 rounded-xl border cursor-pointer">
+                  Edit
+                </button>
+                <button className="px-3 py-1.5 rounded-xl border cursor-pointer">
+                  Share
+                </button>
               </div>
             </div>
 
@@ -63,12 +89,13 @@ export default function PropertyDetail({ property }: { property: Property }) {
       <div className="col-span-5 space-y-4">
         <SectionCard title="Quick Actions">
           <div className="grid grid-cols-2 gap-2 text-sm">
-            <button className="px-3 py-2 rounded-xl border cursor-pointer">New Request</button>
-            <button className="px-3 py-2 rounded-xl border cursor-pointer">Send Text</button>
-            <button className="px-3 py-2 rounded-xl border cursor-pointer">Schedule Visit</button>
-            <button className="px-3 py-2 rounded-xl border cursor-pointer">Add Note</button>
+            <button className="px-3 py-1.5 rounded-xl border cursor-pointer">New Request</button>
+            <button className="px-3 py-1.5 rounded-xl border cursor-pointer">Send Text</button>
+            <button className="px-3 py-1.5 rounded-xl border cursor-pointer">Schedule Visit</button>
+            <button className="px-3 py-1.5 rounded-xl border cursor-pointer">Add Note</button>
           </div>
         </SectionCard>
+
         <SectionCard title="Highlights">
           <div className="text-sm grid grid-cols-2 gap-3">
             <div>

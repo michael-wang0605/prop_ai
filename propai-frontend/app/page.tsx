@@ -1,41 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Topbar from "@/components/Topbar";
 import PropertyCard from "@/components/PropertyCard";
-import SectionCard from "@/components/SectionCard";
-import Tabs from "@/components/Tabs";
-import TextHistory from "@/components/TextHistory";
-import AIChat from "@/components/AIChat";
-import RecentRequests from "@/components/RecentRequests";
-import ImportantInfo from "@/components/ImportantInfo";
-
-/* NEW */
+import PropertyDetail from "@/components/PropertyDetail";
 import AddPropertyCard from "@/components/AddPropertyCard";
 import Modal from "@/components/Modal";
 import AddPropertyForm from "@/components/AddPropertyForm";
-
+import ConfirmDeleteModal from "@/components/ConfirmDeleteModal";
 import { DEMO_PROPS } from "@/lib/demoData";
 import type { Property } from "@/lib/types";
 
 export default function Dashboard() {
-  /* CHANGED: props -> state */
   const [props, setProps] = useState<Property[]>(DEMO_PROPS);
   const [selected, setSelected] = useState<Property | null>(null);
-  const [tab, setTab] = useState("text");
-
-  /* NEW: modal state */
   const [showAdd, setShowAdd] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Property | null>(null);
 
-  const detail = useMemo(
-    () =>
-      selected ? (
-        <div className="grid grid-cols-12 gap-4">
-          {/* ... keep your existing detail code unchanged ... */}
-        </div>
-      ) : null,
-    [selected, tab]
-  );
+  const handleCreate = (p: Property) => {
+    setProps((prev) => [p, ...prev]);
+    setShowAdd(false);
+    // Optional: open the new property immediately
+    // setSelected(p);
+  };
+
+  const confirmDelete = async (p: Property) => {
+    setProps((prev) => prev.filter((x) => x.id !== p.id));
+    if (selected?.id === p.id) setSelected(null); // ⬅️ Ensure navigation back to property list
+    setPendingDelete(null);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -46,7 +39,6 @@ export default function Dashboard() {
           <>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Your Properties</h2>
-              {/* NEW: open Add Property modal */}
               <button
                 onClick={() => setShowAdd(true)}
                 className="px-3 py-1.5 rounded-xl bg-black text-white text-sm cursor-pointer"
@@ -56,22 +48,19 @@ export default function Dashboard() {
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <AddPropertyCard onClick={() => setShowAdd(true)} />  {/* NEW */}
+              <AddPropertyCard onClick={() => setShowAdd(true)} />
               {props.map((p) => (
-                <PropertyCard key={p.id} p={p} onOpen={setSelected} />
+                <PropertyCard
+                  key={p.id}
+                  p={p}
+                  onOpen={setSelected}
+                  onRequestDelete={setPendingDelete}
+                />
               ))}
             </div>
 
-            {/* NEW: modal + form */}
             <Modal open={showAdd} onClose={() => setShowAdd(false)}>
-              <AddPropertyForm
-                onCreate={(p) => {
-                  setProps((prev) => [p, ...prev]);
-                  setShowAdd(false);
-                  // optional: open it immediately after creating
-                  // setSelected(p);
-                }}
-              />
+              <AddPropertyForm onCreate={handleCreate} />
             </Modal>
           </>
         )}
@@ -84,10 +73,20 @@ export default function Dashboard() {
             >
               ← Back to properties
             </button>
-            {detail}
+
+            <PropertyDetail
+              property={selected}
+              onRequestDelete={setPendingDelete} // ⬅️ Trigger modal in page.tsx
+            />
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        property={pendingDelete}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
