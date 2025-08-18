@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from collections import defaultdict
 from datetime import datetime
 
+
 # ------------------ Env / Config ------------------
 
 load_dotenv()
@@ -158,13 +159,21 @@ class ThreadSummary(BaseModel):
 
 app = FastAPI(title="PropAI (Groq + Fake Twilio)")
 
-# NEW: Add CORS middleware
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")  # e.g. https://your-app.vercel.app
+LOCAL_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",     # if you ever open a local viewer
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],  # Adjust to your frontend URL
+    allow_origins=[o for o in [FRONTEND_ORIGIN, *LOCAL_ORIGINS] if o],
+    # allow all Vercel preview deployments like https://propai-git-feat-xyz.vercel.app
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods, including OPTIONS
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Full in-memory conversation history: { "TenantName:Unit" : [ {role, content}, ... ] }
