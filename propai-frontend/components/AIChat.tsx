@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Image from "next/image"; // Import Next.js Image component
 import { Paperclip, X, FileText, Bot, User2, ArrowUp } from "lucide-react";
 import type { Context } from "@/lib/types";
 
@@ -128,9 +129,13 @@ export default function AIChat({ context }: { context?: Context }) {
       const { reply } = await response.json();
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       clearUpload();
-    } catch (err: any) {
+    } catch (err: unknown) { // Changed from 'any' to 'unknown'
       console.error("AI communication error:", err);
-      setError(`Failed to communicate with AI: ${err.message}`);
+      setError(
+        err instanceof Error
+          ? `Failed to communicate with AI: ${err.message}`
+          : "Failed to communicate with AI: Unknown error"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -176,16 +181,18 @@ export default function AIChat({ context }: { context?: Context }) {
                     }`}
                 >
                   {m.image_url && (
-                    <img
+                    <Image
                       src={m.image_url}
                       alt="Attachment"
+                      width={256} // Adjust based on max-h-64 (approx. 256px at standard density)
+                      height={256}
                       className="rounded-lg mb-2 max-h-64 object-contain border"
                     />
                   )}
                   <p className="whitespace-pre-wrap">{m.content}</p>
                 </div>
                 {m.role === "user" && (
-                  <div className="h-7 w-7 rounded-full bg-gray-800 text-white grid place-items-center mt-0.5">
+                  <div className="h-7 w-7 rounded-full bg-gray-800 text-white grid place-items-center mt-0lympic.5">
                     <User2 className="h-3.5 w-3.5" />
                   </div>
                 )}
@@ -208,9 +215,11 @@ export default function AIChat({ context }: { context?: Context }) {
               <div className="inline-flex items-center gap-2 border bg-white rounded-xl px-3 py-2 shadow-sm">
                 {upload.kind === "image" ? (
                   <div className="h-6 w-6 rounded-md overflow-hidden border">
-                    <img
+                    <Image
                       src={upload.dataUrl}
                       alt="preview"
+                      width={24}
+                      height={24}
                       className="h-full w-full object-cover"
                     />
                   </div>
