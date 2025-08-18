@@ -157,24 +157,31 @@ class ThreadSummary(BaseModel):
 
 # ------------------ App + Memory ------------------
 
-app = FastAPI(title="PropAI (Groq + Fake Twilio)")
+# main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import os
 
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")  # e.g. https://your-app.vercel.app
-LOCAL_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",     # if you ever open a local viewer
-]
+app = FastAPI(title="PropAI")
 
+# CORS (keep what you had, or this version)
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o for o in [FRONTEND_ORIGIN, *LOCAL_ORIGINS] if o],
-    # allow all Vercel preview deployments like https://propai-git-feat-xyz.vercel.app
+    allow_origins=[o for o in [FRONTEND_ORIGIN, "http://localhost:3000", "http://127.0.0.1:3000"] if o],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    return {"ok": True}
+
+# include your routers AFTER app is created
+# from ai_chat import router as chat_router
+# app.include_router(chat_router, prefix="/api")
 
 # Full in-memory conversation history: { "TenantName:Unit" : [ {role, content}, ... ] }
 chat_histories: Dict[str, List[Dict[str, str]]] = defaultdict(list)
