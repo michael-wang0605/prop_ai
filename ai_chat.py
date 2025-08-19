@@ -78,12 +78,12 @@ class Message(Base):
 Base.metadata.create_all(bind=engine)
 
 # ------------------ System Prompt ------------------
-# (No image instructions by default.)
 PM_SYSTEM = (
     "You are PropAI, a helpful personal assistant for property managers.\n"
     "Use the provided context about the property and tenant to answer accurately.\n"
     "Suggest maintenance tips, rent policies, or next actions based on standard practices.\n"
     "Keep responses concise, professional, and helpful.\n"
+    "When summarizing tenant info, include Contact Information with both Phone (tenant_phone) and Hotline if present.\n"
 )
 
 # ------------------ Schemas ------------------
@@ -94,12 +94,16 @@ class Context(BaseModel):
     hotline: Optional[str] = None
     portal_url: Optional[str] = None
     property_name: Optional[str] = None
+    # NEW: surface the actual tenant phone number to the LLM
+    tenant_phone: Optional[str] = None
 
 class PmChatRequest(BaseModel):
     message: str
     context: Context
     image_url: Optional[str] = None      # optional; triggers vision if present
     document_url: Optional[str] = None   # optional; triggers vision if present
+    # NEW: optional phone to enrich context from DB without requiring frontend to pass it in Context
+    phone: Optional[str] = None
 
 class PmChatResponse(BaseModel):
     reply: str
@@ -138,7 +142,7 @@ FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://prop-ai-three.vercel.app",  # your current Vercel URL
+        "https://prop-ai-three.vercel.app",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
@@ -147,6 +151,7 @@ app.add_middleware(
     expose_headers=["*"],
     allow_credentials=True,
 )
+
 # ------------------ LLM Helper ------------------
 async def call_groq(messages: List[Dict[str, Any]], model: str) -> str:
     payload = {
@@ -178,7 +183,7 @@ def health():
     }
 
 @app.post("/pm_chat", response_model=PmChatResponse)
-async def pm_chat(req: PmChatRequest = Body(...)):
+async def pm_chat(req: PmChatRequest = Body(...), db: Session = Depends(get_db)):
     has_text = bool((req.message or "").strip())
     has_upload = bool(req.image_url or req.document_url)
     if not has_text and not has_upload:
@@ -187,17 +192,26 @@ async def pm_chat(req: PmChatRequest = Body(...)):
     # Choose model: text by default; vision only if file provided
     model = VISION_MODEL if has_upload else TEXT_MODEL
 
-    # Build system + user content
-    system_with_context = PM_SYSTEM + "\n\nContext JSON:\n" + json.dumps(req.context.dict(), ensure_ascii=False)
+    # ---------- ENRICH CONTEXT WITH PHONE FROM DB IF NEEDED ----------
+    ctx: Dict[str, Any] = req.context.dict()
+    # If tenant_phone not provided, try to backfill from DB using req.phone
+    if not ctx.get("tenant_phone") and req.phone:
+        row = db.get(Contact, req.phone)
+        if row:
+            ctx["tenant_phone"] = row.phone
+            # also patch any missing fields from DB
+            for k in ("tenant_name", "unit", "address", "hotline", "portal_url", "property_name"):
+                if not ctx.get(k) and getattr(row, k):
+                    ctx[k] = getattr(row, k)
 
-    # If uploads provided, use multimodal content format; else plain text
+    # ------------------ Build messages ------------------
+    system_with_context = PM_SYSTEM + "\n\nContext JSON:\n" + json.dumps(ctx, ensure_ascii=False)
+
     if has_upload:
         user_parts: List[Dict[str, Any]] = [{"type": "text", "text": req.message}] if has_text else []
         if req.image_url:
             user_parts.append({"type": "image_url", "image_url": {"url": req.image_url}})
         if req.document_url:
-            # Treat documents as an external resource; many vision-capable chat endpoints accept them via 'image_url' style or text ref.
-            # If the API supports a dedicated document type, adapt here; otherwise include as text reference.
             user_parts.append({"type": "text", "text": f"Document URL: {req.document_url}"})
         user_content: Any = user_parts
     else:
@@ -258,6 +272,7 @@ def get_contact(phone: str, db: Session = Depends(get_db)):
         hotline=row.hotline,
         portal_url=row.portal_url,
         property_name=row.property_name,
+        tenant_phone=row.phone,  # <— include phone in returned context
     )
 
 # ---------- Minimal Threads API (for your UI) ----------
