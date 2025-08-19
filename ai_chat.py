@@ -137,16 +137,16 @@ app = FastAPI(title="PropAI PM Chat (single-file)")
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o for o in [FRONTEND_ORIGIN, "http://localhost:3000", "http://127.0.0.1:3000"] if o],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=[
+        "https://prop-ai-three.vercel.app",  # your current Vercel URL
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_methods=["GET", "POST", "OPTIONS", "DELETE", "PUT", "PATCH", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    allow_credentials=True,
 )
-
-@app.options("/{rest_of_path:path}")
-def preflight_passthrough(rest_of_path: str):
-    return Response(status_code=204)
-
 # ------------------ LLM Helper ------------------
 async def call_groq(messages: List[Dict[str, Any]], model: str) -> str:
     payload = {
