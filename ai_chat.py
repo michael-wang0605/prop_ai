@@ -18,10 +18,15 @@ load_dotenv()
 
 API_KEY = os.getenv("LLM_API_KEY")
 if not API_KEY:
-    raise RuntimeError("LLM_API_KEY not set. Put it in .env or set it in your shell.")
+    raise RuntimeError("LLM_API_KEY not set.")
 
-MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
-VISION_MODEL = os.getenv("LLM_VISION_MODEL", "llava-1.5-7b-4096-preview")
+# Text default model (no uploads)
+TEXT_MODEL   = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
+
+# Vision model (when an image OR document is provided)
+VISION_MODEL = os.getenv("LLM_VISION_MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct")
+
+# Groq OpenAI-compatible endpoint
 GROQ_URL = os.getenv("LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./propai.db")
@@ -62,7 +67,7 @@ class Message(Base):
     status = Column(String, default="received")
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Optional AI annotations (kept for parity)
+    # Optional AI annotations
     ai_reply = Column(Text, nullable=True)
     category = Column(String, nullable=True)
     priority = Column(String, nullable=True)
@@ -73,11 +78,11 @@ class Message(Base):
 Base.metadata.create_all(bind=engine)
 
 # ------------------ System Prompt ------------------
+# (No image instructions by default.)
 PM_SYSTEM = (
     "You are PropAI, a helpful personal assistant for property managers.\n"
-    "Use the provided context about the property and tenant to answer questions accurately.\n"
-    "Suggest maintenance tips, rent policies, or actions based on standard practices.\n"
-    "If an image is provided, describe it and analyze it for property issues (damage, leaks, hazards).\n"
+    "Use the provided context about the property and tenant to answer accurately.\n"
+    "Suggest maintenance tips, rent policies, or next actions based on standard practices.\n"
     "Keep responses concise, professional, and helpful.\n"
 )
 
@@ -93,7 +98,8 @@ class Context(BaseModel):
 class PmChatRequest(BaseModel):
     message: str
     context: Context
-    image_url: Optional[str] = None  # Data URL or remote URL
+    image_url: Optional[str] = None      # optional; triggers vision if present
+    document_url: Optional[str] = None   # optional; triggers vision if present
 
 class PmChatResponse(BaseModel):
     reply: str
@@ -128,28 +134,25 @@ class ThreadSummary(BaseModel):
 # ------------------ App ------------------
 app = FastAPI(title="PropAI PM Chat (single-file)")
 
-from fastapi.middleware.cors import CORSMiddleware
-
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origins=[o for o in [FRONTEND_ORIGIN, "http://localhost:3000", "http://127.0.0.1:3000"] if o],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],                 # or ["Content-Type", "Authorization"]
-    expose_headers=["*"],
-    max_age=600,                         # cache preflight for 10 minutes
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.options("/{rest_of_path:path}")
 def preflight_passthrough(rest_of_path: str):
     return Response(status_code=204)
+
 # ------------------ LLM Helper ------------------
 async def call_groq(messages: List[Dict[str, Any]], model: str) -> str:
-    payload: Dict[str, Any] = {
+    payload = {
         "model": model,
         "messages": messages,
         "temperature": 0.2,
-        "top_p": 0.9,
     }
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -160,43 +163,54 @@ async def call_groq(messages: List[Dict[str, Any]], model: str) -> str:
         try:
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=r.status_code, detail=r.text) from e
+            raise HTTPException(status_code=r.status_code, detail=f"LLM error: {r.text}") from e
         data = r.json()
-        try:
-            return data["choices"][0]["message"]["content"]
-        except Exception:
-            raise HTTPException(status_code=502, detail=f"LLM malformed response: {data}")
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 # ------------------ Routes ------------------
 @app.get("/")
 def health():
-    return {"ok": True, "model": MODEL, "vision_model": VISION_MODEL, "db": DATABASE_URL}
+    return {
+        "ok": True,
+        "text_model": TEXT_MODEL,
+        "vision_model": VISION_MODEL,
+        "db": DATABASE_URL,
+    }
 
 @app.post("/pm_chat", response_model=PmChatResponse)
 async def pm_chat(req: PmChatRequest = Body(...)):
     has_text = bool((req.message or "").strip())
-    has_image = bool(req.image_url)
-    if not has_text and not has_image:
-        raise HTTPException(status_code=400, detail="Message or image_url required.")
+    has_upload = bool(req.image_url or req.document_url)
+    if not has_text and not has_upload:
+        raise HTTPException(400, "Message or image_url/document_url required.")
 
-    model = VISION_MODEL if has_image else MODEL
+    # Choose model: text by default; vision only if file provided
+    model = VISION_MODEL if has_upload else TEXT_MODEL
 
-    # Vision payload format
-    if has_image:
-        user_content: List[Dict[str, Any]] = []
-        if has_text:
-            user_content.append({"type": "text", "text": req.message})
-        user_content.append({"type": "image_url", "image_url": {"url": req.image_url}})
+    # Build system + user content
+    system_with_context = PM_SYSTEM + "\n\nContext JSON:\n" + json.dumps(req.context.dict(), ensure_ascii=False)
+
+    # If uploads provided, use multimodal content format; else plain text
+    if has_upload:
+        user_parts: List[Dict[str, Any]] = [{"type": "text", "text": req.message}] if has_text else []
+        if req.image_url:
+            user_parts.append({"type": "image_url", "image_url": {"url": req.image_url}})
+        if req.document_url:
+            # Treat documents as an external resource; many vision-capable chat endpoints accept them via 'image_url' style or text ref.
+            # If the API supports a dedicated document type, adapt here; otherwise include as text reference.
+            user_parts.append({"type": "text", "text": f"Document URL: {req.document_url}"})
+        user_content: Any = user_parts
     else:
         user_content = req.message
 
-    system_with_context = PM_SYSTEM + "\n\nContext JSON:\n" + json.dumps(req.context.dict(), ensure_ascii=False)
     messages = [
         {"role": "system", "content": system_with_context},
-        {"role": "user", "content": user_content},
+        {"role": "user",   "content": user_content},
     ]
-    reply = await call_groq(messages, model=model)
-    reply = (reply or "").strip() or "Sorry—I'm not sure how to help with that yet."
+
+    reply = (await call_groq(messages, model=model) or "").strip()
+    if not reply:
+        reply = "Sorry—I'm not sure how to help with that yet."
     return PmChatResponse(reply=reply)
 
 # ---------- Contacts (persist context) ----------
@@ -249,7 +263,6 @@ def get_contact(phone: str, db: Session = Depends(get_db)):
 # ---------- Minimal Threads API (for your UI) ----------
 @app.get("/threads", response_model=List[ThreadSummary])
 def list_threads(db: Session = Depends(get_db)):
-    # group by phone
     sums: Dict[str, ThreadSummary] = {}
     q = db.query(Message).order_by(Message.created_at.asc()).all()
     for m in q:
@@ -273,7 +286,7 @@ def get_thread(phone: str, db: Session = Depends(get_db)):
         .order_by(Message.created_at.asc())
         .all()
     )
-    return rows  # Pydantic orm_mode serializes
+    return rows
 
 # ---------- Lightweight seeding endpoints (optional) ----------
 class CreateMessage(BaseModel):
