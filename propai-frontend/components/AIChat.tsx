@@ -118,11 +118,12 @@ export default function AIChat({ context, phone }: AIChatProps) {
       // - prefer context.tenant_phone (new key)
       // - fall back to context.phone (legacy key in your demoData)
       // - finally fall back to prop `phone` from Property
-      const tenant_phone =
-        (context as any)?.tenant_phone ??
-        (context as any)?.phone ??
-        phone ??
-        undefined;
+// 🧠 Ensure the LLM sees a tenant_phone
+      const tenant_phone: string | undefined =
+        context?.tenant_phone ??
+        (context as unknown as { phone?: string })?.phone ?? // allow legacy key in demoData
+        phone;
+
 
       const payload = {
         message: userMessage.content || "",
