@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Image from "next/image"; // Import Next.js Image component
+import Image from "next/image";
 import { Paperclip, X, FileText, Bot, User2, ArrowUp } from "lucide-react";
 import type { Context } from "@/lib/types";
 
@@ -16,6 +16,16 @@ type Upload = {
   dataUrl: string;
   kind: "image" | "pdf" | "other";
 };
+
+/** ✅ Backend base URL:
+ *  - Set NEXT_PUBLIC_API_BASE on Vercel to your Render origin, e.g. https://prop-ai.onrender.com
+ *  - Falls back to localhost in dev
+ */
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ||
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:8000"
+    : "https://prop-ai.onrender.com");
 
 export default function AIChat({ context }: { context?: Context }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -110,9 +120,9 @@ export default function AIChat({ context }: { context?: Context }) {
         image_url: upload?.kind === "image" ? upload.dataUrl : null,
       };
 
-      console.log("Sending payload to /pm_chat:", JSON.stringify(payload, null, 2));
+      console.log(`Sending payload to ${API_BASE}/pm_chat:`, payload);
 
-      const response = await fetch("http://localhost:8000/pm_chat", {
+      const response = await fetch(`${API_BASE}/pm_chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -129,7 +139,7 @@ export default function AIChat({ context }: { context?: Context }) {
       const { reply } = await response.json();
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       clearUpload();
-    } catch (err: unknown) { // Changed from 'any' to 'unknown'
+    } catch (err: unknown) {
       console.error("AI communication error:", err);
       setError(
         err instanceof Error
@@ -184,7 +194,7 @@ export default function AIChat({ context }: { context?: Context }) {
                     <Image
                       src={m.image_url}
                       alt="Attachment"
-                      width={256} // Adjust based on max-h-64 (approx. 256px at standard density)
+                      width={256}
                       height={256}
                       className="rounded-lg mb-2 max-h-64 object-contain border"
                     />
@@ -192,7 +202,7 @@ export default function AIChat({ context }: { context?: Context }) {
                   <p className="whitespace-pre-wrap">{m.content}</p>
                 </div>
                 {m.role === "user" && (
-                  <div className="h-7 w-7 rounded-full bg-gray-800 text-white grid place-items-center mt-0lympic.5">
+                  <div className="h-7 w-7 rounded-full bg-gray-800 text-white grid place-items-center mt-0.5">
                     <User2 className="h-3.5 w-3.5" />
                   </div>
                 )}
