@@ -5,7 +5,7 @@ export type Context = {
   hotline?: string;
   portal_url?: string;
   property_name?: string;
-  phone?: string;
+  tenant_phone?: string;
 };
 
 export type SmsMsg = {

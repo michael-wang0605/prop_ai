@@ -14,7 +14,7 @@ export const DEMO_PROPS: Property[] = [
       hotline: "+1-555-0100",
       portal_url: "https://portal.example.com/login",
       property_name: "Maple Court",
-      phone: "+14045550123"
+      tenant_phone: "+14045550123"
     },
   },
   {
@@ -30,7 +30,7 @@ export const DEMO_PROPS: Property[] = [
       hotline: "+1-555-0100",
       portal_url: "https://portal.example.com/login",
       property_name: "Pine Ridge",
-      phone: "+14045550124"
+      tenant_phone: "+14045550124"
     },
   },
 ];

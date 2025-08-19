@@ -27,7 +27,13 @@ const API_BASE =
     ? "http://localhost:8000"
     : "https://prop-ai.onrender.com");
 
-export default function AIChat({ context }: { context?: Context }) {
+/** Props now accept both context and phone */
+interface AIChatProps {
+  context?: Context;
+  phone?: string; // thread/contact phone (Property.phone)
+}
+
+export default function AIChat({ context, phone }: AIChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -107,17 +113,31 @@ export default function AIChat({ context }: { context?: Context }) {
 
     try {
       setIsLoading(true);
+
+      // 🧠 Ensure the LLM sees a tenant_phone:
+      // - prefer context.tenant_phone (new key)
+      // - fall back to context.phone (legacy key in your demoData)
+      // - finally fall back to prop `phone` from Property
+      const tenant_phone =
+        (context as any)?.tenant_phone ??
+        (context as any)?.phone ??
+        phone ??
+        undefined;
+
       const payload = {
-        message: input || "",
+        message: userMessage.content || "",
         context: {
           tenant_name: context.tenant_name,
           unit: context.unit,
           address: context.address,
-          hotline: context.hotline || null,
-          portal_url: context.portal_url || null,
-          property_name: context.property_name || null,
+          hotline: context.hotline ?? null,
+          portal_url: context.portal_url ?? null,
+          property_name: context.property_name ?? null,
+          tenant_phone, // <-- guaranteed path for LLM
         },
+        phone: phone ?? null, // <-- lets backend hydrate from DB if needed
         image_url: upload?.kind === "image" ? upload.dataUrl : null,
+        // document_url: could be added if you upload PDFs to storage first
       };
 
       console.log(`Sending payload to ${API_BASE}/pm_chat:`, payload);

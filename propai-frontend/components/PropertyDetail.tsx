@@ -78,7 +78,7 @@ export default function PropertyDetail({
         </section>
 
         {tab === "text" && <TextHistory phone={property.phone} />}
-        {tab === "ai" && <AIChat context={property.context} />}
+        {tab === "ai" && <AIChat context={property.context} phone={property.phone} />}
         {tab === "req" && <RecentRequests phone={property.phone} />}
         {tab === "info" && (
           <ImportantInfo context={property.context} phone={property.phone} />
